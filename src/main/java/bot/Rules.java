@@ -1,7 +1,13 @@
 package bot;
 
-import module chariot;
-import module java.base;
+import chariot.ClientAuth;
+import chariot.chess.BoardProvider;
+import chariot.model.*;
+
+import java.util.List;
+import java.util.Map;
+import java.util.function.BiPredicate;
+import java.util.logging.Logger;
 
 record Rules(List<Rule> rules) {
 

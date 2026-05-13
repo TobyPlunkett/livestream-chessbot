@@ -6,9 +6,20 @@
     <artifactId>charibot</artifactId>
     <version>0.0.1-SNAPSHOT</version>
 
-    <packaging>jlink</packaging>
-
+    <packaging>jar</packaging>
+    <repositories>
+        <repository>
+            <id>jitpack.io</id>
+            <url>https://jitpack.io</url>
+        </repository>
+    </repositories>
     <dependencies>
+        <dependency>
+            <groupId>com.github.jwdeveloper.TikTok-Live-Java</groupId>
+            <artifactId>Client</artifactId>
+            <version>1.11.12-Release</version>
+            <scope>compile</scope>
+        </dependency>
         <dependency>
             <groupId>io.github.tors42</groupId>
             <artifactId>chariot</artifactId>
@@ -17,35 +28,31 @@
     </dependencies>
 
     <properties>
-        <maven.compiler.release>26</maven.compiler.release>
-
-        <source.jdk>${env.JAVA_HOME}</source.jdk>
-        <os.arch.classifier>local</os.arch.classifier>
+        <maven.compiler.release>25</maven.compiler.release>
     </properties>
 
     <build>
         <plugins>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-jlink-plugin</artifactId>
-                <version>3.3.0</version>
-                <extensions>true</extensions>
-                <configuration>
-                    <sourceJdkModules>${source.jdk}</sourceJdkModules>
-                    <classifier>${os.arch.classifier}</classifier>
-                    <launcher>bot=charibot/bot.Bot</launcher>
-                    <addOptions>
-                        <addOption>--enable-preview</addOption>
-                    </addOptions>
-                    <addModules>
-                        <addModule>jdk.jfr</addModule>
-                        <addModule>jdk.jcmd</addModule>
-                    </addModules>
-                    <compress>zip-9</compress>
-                    <noHeaderFiles>true</noHeaderFiles>
-                    <noManPages>true</noManPages>
-                    <!--<stripDebug>true</stripDebug>-->
-                </configuration>
+                <artifactId>maven-shade-plugin</artifactId>
+                <version>3.6.0</version>
+                <executions>
+                    <execution>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>shade</goal>
+                        </goals>
+                        <configuration>
+                            <transformers>
+                                <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
+                                    <mainClass>bot.Bot</mainClass>
+                                </transformer>
+                                <transformer implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer"/>
+                            </transformers>
+                        </configuration>
+                    </execution>
+                </executions>
             </plugin>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>

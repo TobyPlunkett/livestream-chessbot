@@ -1,7 +1,13 @@
 package bot;
 
-import module chariot;
-import module java.base;
+import chariot.Client;
+import chariot.ClientAuth;
+import chariot.model.*;
+
+import java.net.URI;
+import java.util.Locale;
+import java.util.logging.Logger;
+import java.util.prefs.Preferences;
 
 record ClientAndAccount(ClientAuth client, UserAuth account) {
 
@@ -33,6 +39,7 @@ record ClientAndAccount(ClientAuth client, UserAuth account) {
 
         URI lichessApi = URI.create(System.getenv("LICHESS_API") instanceof String api ? api : "https://lichess.org");
 
+        String test = System.getenv("BOT_TOKEN");
         if (System.getenv("BOT_TOKEN") instanceof String token) { // scope bot:play
             var client = Client.auth(conf -> conf.api(lichessApi), token);
             var scopeReq = client.scopes();

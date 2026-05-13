@@ -1,16 +1,37 @@
 package bot;
 
-import module chariot;
-import module java.base;
+import chariot.ClientAuth;
+import chariot.model.*;
+import chariot.chess.*;
+import reader.TiktokReader;
 
-record Bot(ClientAndAccount clientAndAccount, Map<String,String> games, Rules rules, Map<String, BoardProvider> providers) {
+import java.net.URI;
+import java.time.Duration;
+import java.util.*;
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.*;
+import java.util.logging.*;
+import java.util.stream.Collectors;
+
+public record Bot(ClientAndAccount clientAndAccount, Map<String,String> games, Rules rules, Map<String, BoardProvider> providers) {
 
     static final Logger LOGGER = Logger.getLogger("bot");
+    static final String TARGET_USER = "vox567";
 
-    static void main() {
+    public void receiveMoves(List<String> moves){
+        System.out.println("move numbers" + moves.size());
+    }
+
+    static void main() throws InterruptedException {
+
         while (true) {
             try {
-                if (ClientAndAccount.initialize().map(Bot::new) instanceof Some(var bot)) bot.run();
+                if (ClientAndAccount.initialize().map(Bot::new) instanceof Some(var bot)) {
+                    TiktokReader tiktokReader = new TiktokReader(bot);
+                    tiktokReader.startReader();
+                    bot.run();
+                }
             } catch (Exception e) {
                 LOGGER.log(Level.WARNING, e, e::getMessage);
             } finally {
@@ -39,10 +60,9 @@ record Bot(ClientAndAccount clientAndAccount, Map<String,String> games, Rules ru
             return;
         }
 
-        // Check if we are to challenge someone...
-        if (System.getenv("BOT_CHALLENGE_USER") instanceof String challengeUser) {
-            sendChallenge(challengeUser, clientAndAccount.client());
-        }
+
+        sendChallenge(TARGET_USER, clientAndAccount.client());
+
 
         // Check if we should ask to be paired for a game in arena
         if (System.getenv("ARENA_ID") instanceof String arenaId) {
