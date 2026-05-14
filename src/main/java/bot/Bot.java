@@ -40,7 +40,7 @@ public record Bot(ClientAndAccount clientAndAccount, Map<String,String> games, R
         }
 
         try (var scope = StructuredTaskScope.open();
-             var stream = events.stream();) {
+             var stream = events.stream()) {
             stream.forEach(event -> { switch(event) {
                 case Event.ChallengeCreatedEvent created -> scope.fork(() -> handleChallenge(created));
                 case Event.GameStartEvent(var game, _)   -> scope.fork(() -> handleGame(game, processor));
@@ -82,7 +82,7 @@ public record Bot(ClientAndAccount clientAndAccount, Map<String,String> games, R
         // Accept the challenge
         if (clientAndAccount.client().challenges().acceptChallenge(event.id()) instanceof Fail<?> f) {
             LOGGER.warning(() -> "Failed (%s) to accept %s!".formatted(f, event));
-            clientAndAccount.client().challenges().declineChallenge(event.id(), d -> d.generic());
+            clientAndAccount.client().challenges().declineChallenge(event.id(), Enums.DeclineReason.Provider::generic);
             return;
         }
 

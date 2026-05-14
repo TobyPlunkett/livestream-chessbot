@@ -14,10 +14,10 @@ public class TiktokReader {
 
     public void startReader() {
         TikTokLive.newClient(username)
-                .onConnected((liveClient, event) -> System.out.println("Connected to live"))
-                .onError((liveClient, event) -> System.out.println("Error! " + event.getException().getMessage()))
-                .onDisconnected((liveClient, event) -> System.out.println("Disconnected: " + event.getReason()))
-                .onComment((liveClient, event) -> {
+                .onConnected((_, _) -> System.out.println("Connected to live"))
+                .onError((_, event) -> System.out.println("Error! " + event.getException().getMessage()))
+                .onDisconnected((_, event) -> System.out.println("Disconnected: " + event.getReason()))
+                .onComment((_, event) -> {
                     System.out.println(event.getText());
                     processor.onMessage(event.getText());
                 })
