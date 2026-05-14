@@ -101,116 +101,122 @@ public record Bot(ClientAndAccount clientAndAccount, Map<String,String> games, R
     }
 
     void handleGame(GameInfo game, MessageProcessor processor) {
-        var client = clientAndAccount.client();
-        var account = clientAndAccount.account();
-        var provider = providers.get(game.variant().key());
-        if (provider == null) {
-            client.bot().resign(game.gameId());
-            return;
-        }
-
-        Board initialBoard = provider.fromFEN(game.variant().key(), game.fen());
-
-        games.put(game.opponent().id(), game.gameId());
+        Board initialBoard = setupGame(game);
+        if (initialBoard == null) return;
 
         try {
-            Function<Enums.Color, String> nameByColor = color ->
-                color == game.color() ? account.name() : game.opponent().name();
-
-            Consumer<String> processMoves = moves -> {
-                Board board = initialBoard.play(moves);
-
-                if (game.color() == Enums.Color.white
-                        ? board.sideToMove() == Side.black
-                        : board.sideToMove() == Side.white) return;
-
-                processor.openVotingWindow(board.validMoves(), move -> {
-                    Ack result = client.bot().move(game.gameId(), move);
-                    if (result instanceof Fail<?> fail) {
-                        LOGGER.warning(() -> "Play failed: %s - resigning".formatted(fail));
-                        client.bot().resign(game.gameId());
-                    }
-                });
-            };
-
-            LOGGER.fine(() -> "Connecting to game: %s".formatted(game));
-
-            final AtomicInteger movesPlayedSinceStart = new AtomicInteger();
-
-            var connectToGameResult = client.bot().connectToGame(game.gameId());
-
-            if (! (connectToGameResult instanceof Entries<GameStateEvent> entries)) {
-                LOGGER.warning(() -> "Failed to connect to game %s%n%s".formatted(game, connectToGameResult));
-                client.bot().resign(game.gameId());
-                return;
-            }
-
-            try (var stream = entries.stream()) {
-                stream.forEach(event -> { switch(event) {
-                    case GameStateEvent.Full full -> {
-                        LOGGER.info(() -> "FULL: %s".formatted(full));
-                        movesPlayedSinceStart.set(full.state().moveList().size());
-                        processMoves.accept("");
-                    }
-
-                    case GameStateEvent.State state -> {
-                        List<String> moveList = state.moveList();
-                        moveList = moveList.subList(movesPlayedSinceStart.get(), moveList.size());
-                        int moves = moveList.size();
-                        if (moves > 0) {
-                            Board board = initialBoard;
-                            if (moves > 1) board = board.play(String.join(" ", moveList.subList(0, moves-1)));
-                            String lastMove = moveList.getLast();
-
-                            String infoBeforeMove = "%s (%s) played (%s - %s)".formatted(
-                                    lastMove,
-                                    board.toSAN(lastMove),
-                                    nameByColor.apply(Enums.Color.white) + (board.sideToMove() == Side.white ? "*" : ""),
-                                    nameByColor.apply(Enums.Color.black) + (board.sideToMove() == Side.black ? "*" : ""));
-
-                            board = board.play(lastMove);
-
-                            String infoAfterMove = "%s %s".formatted(
-                                    board.toFEN(),
-                                    state.status());
-
-                            LOGGER.info("%s\n%s".formatted(infoBeforeMove, infoAfterMove));
-                        }
-
-                        if (state.status().ordinal() > Enums.Status.started.ordinal()) {
-                            client.bot().chat(game.gameId(), "Thanks for the game!");
-                            LOGGER.info(() -> state.winner() instanceof Some(var winner)
-                                    ? "Winner: %s".formatted(nameByColor.apply(winner))
-                                    : "No winner: %s".formatted(state.status()));
-                            break;
-                        }
-
-                        if (state.drawOffer() instanceof Some(var color)
-                            && color != game.color()) {
-                            client.bot().handleDrawOffer(game.gameId(), true);
-                            break;
-                        }
-
-                        processMoves.accept(String.join(" ", moveList));
-                    }
-
-                    case GameStateEvent.OpponentGone(_, GameStateEvent.Yes())
-                        -> LOGGER.info("Claim Draw: %s".formatted(client.bot().claimDraw(game.gameId())));
-                    case GameStateEvent.OpponentGone gone
-                        -> LOGGER.info(() -> "Gone: %s".formatted(gone));
-                    case GameStateEvent.Chat(var name, var text, var room)
-                        -> LOGGER.info(() -> "Chat: [%s][%s]: %s".formatted(name, room, text));
-                }});
-            }
-            LOGGER.fine(() -> "GameEvent handler for %s finished".formatted(game.gameId()));
+            handleGameEvents(game, initialBoard, processor);
         } finally {
             games.remove(game.opponent().id(), game.gameId());
         }
 
-        // Check if we are to challenge someone...
         if (System.getenv("BOT_CHALLENGE_USER") instanceof String challengeUser
             && game.opponent().id().equalsIgnoreCase(challengeUser)) {
             sendChallenge(challengeUser, clientAndAccount.client());
         }
+    }
+
+    Board setupGame(GameInfo game) {
+        var client = clientAndAccount.client();
+        var provider = providers.get(game.variant().key());
+        if (provider == null) {
+            client.bot().resign(game.gameId());
+            return null;
+        }
+        Board initialBoard = provider.fromFEN(game.variant().key(), game.fen());
+        games.put(game.opponent().id(), game.gameId());
+        return initialBoard;
+    }
+
+    void handleGameEvents(GameInfo game, Board initialBoard, MessageProcessor processor) {
+        var client = clientAndAccount.client();
+        var account = clientAndAccount.account();
+
+        Function<Enums.Color, String> nameByColor = color ->
+            color == game.color() ? account.name() : game.opponent().name();
+
+        Consumer<String> processMoves = moves -> {
+            Board board = initialBoard.play(moves);
+
+            if (game.color() == Enums.Color.white
+                    ? board.sideToMove() == Side.black
+                    : board.sideToMove() == Side.white) return;
+
+            processor.openVotingWindow(board.validMoves(), move -> {
+                Ack result = client.bot().move(game.gameId(), move);
+                if (result instanceof Fail<?> fail) {
+                    LOGGER.warning(() -> "Play failed: %s - resigning".formatted(fail));
+                    client.bot().resign(game.gameId());
+                }
+            });
+        };
+
+        LOGGER.fine(() -> "Connecting to game: %s".formatted(game));
+
+        final AtomicInteger movesPlayedSinceStart = new AtomicInteger();
+        var connectToGameResult = client.bot().connectToGame(game.gameId());
+
+        if (!(connectToGameResult instanceof Entries<GameStateEvent> entries)) {
+            LOGGER.warning(() -> "Failed to connect to game %s%n%s".formatted(game, connectToGameResult));
+            client.bot().resign(game.gameId());
+            return;
+        }
+
+        try (var stream = entries.stream()) {
+            stream.forEach(event -> { switch(event) {
+                case GameStateEvent.Full full -> {
+                    LOGGER.info(() -> "FULL: %s".formatted(full));
+                    movesPlayedSinceStart.set(full.state().moveList().size());
+                    processMoves.accept("");
+                }
+
+                case GameStateEvent.State state -> {
+                    List<String> moveList = state.moveList();
+                    moveList = moveList.subList(movesPlayedSinceStart.get(), moveList.size());
+                    int moves = moveList.size();
+                    if (moves > 0) {
+                        Board board = initialBoard;
+                        if (moves > 1) board = board.play(String.join(" ", moveList.subList(0, moves-1)));
+                        String lastMove = moveList.getLast();
+
+                        String infoBeforeMove = "%s (%s) played (%s - %s)".formatted(
+                                lastMove,
+                                board.toSAN(lastMove),
+                                nameByColor.apply(Enums.Color.white) + (board.sideToMove() == Side.white ? "*" : ""),
+                                nameByColor.apply(Enums.Color.black) + (board.sideToMove() == Side.black ? "*" : ""));
+
+                        board = board.play(lastMove);
+
+                        String infoAfterMove = "%s %s".formatted(board.toFEN(), state.status());
+
+                        LOGGER.info("%s\n%s".formatted(infoBeforeMove, infoAfterMove));
+                    }
+
+                    if (state.status().ordinal() > Enums.Status.started.ordinal()) {
+                        client.bot().chat(game.gameId(), "Thanks for the game!");
+                        LOGGER.info(() -> state.winner() instanceof Some(var winner)
+                                ? "Winner: %s".formatted(nameByColor.apply(winner))
+                                : "No winner: %s".formatted(state.status()));
+                        break;
+                    }
+
+                    if (state.drawOffer() instanceof Some(var color)
+                        && color != game.color()) {
+                        client.bot().handleDrawOffer(game.gameId(), true);
+                        break;
+                    }
+
+                    processMoves.accept(String.join(" ", moveList));
+                }
+
+                case GameStateEvent.OpponentGone(_, GameStateEvent.Yes())
+                    -> LOGGER.info("Claim Draw: %s".formatted(client.bot().claimDraw(game.gameId())));
+                case GameStateEvent.OpponentGone gone
+                    -> LOGGER.info(() -> "Gone: %s".formatted(gone));
+                case GameStateEvent.Chat(var name, var text, var room)
+                    -> LOGGER.info(() -> "Chat: [%s][%s]: %s".formatted(name, room, text));
+            }});
+        }
+        LOGGER.fine(() -> "GameEvent handler for %s finished".formatted(game.gameId()));
     }
 }

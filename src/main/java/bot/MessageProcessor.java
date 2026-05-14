@@ -1,5 +1,7 @@
 package bot;
 
+import io.github.jwdeveloper.tiktok.data.events.TikTokCommentEvent;
+
 import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.*;
@@ -20,9 +22,14 @@ public class MessageProcessor {
         this.votingDuration = votingDuration;
     }
 
-    public void onMessage(String text) {
-        if (!votingOpen.get()) return;
+    public void onMessage(TikTokCommentEvent commentEvent) {
+        String text = commentEvent.getText();
+        String user = commentEvent.getUser().getProfileName();
+
+//        System.out.println(text);
+//        if (!votingOpen.get()) return;
         String move = text.trim().toLowerCase();
+
         if (currentValidMoves.contains(move)) {
             votes.merge(move, 1, Integer::sum);
             LOGGER.info(() -> "Vote: %s (total: %d)".formatted(move, votes.get(move)));
