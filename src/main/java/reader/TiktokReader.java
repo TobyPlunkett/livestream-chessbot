@@ -1,41 +1,27 @@
 package reader;
 
-import bot.Bot;
+import bot.MessageProcessor;
 import io.github.jwdeveloper.tiktok.TikTokLive;
 
-import java.util.ArrayList;
-import java.util.List;
-
 public class TiktokReader {
-    List<String> messageList = new ArrayList<>();
-    Bot chessbot;
+    private final String username;
+    private final MessageProcessor processor;
 
-    public TiktokReader(Bot chessbot) {
-        this.chessbot = chessbot;
+    public TiktokReader(String username, MessageProcessor processor) {
+        this.username = username;
+        this.processor = processor;
     }
 
-    public void startReader() throws InterruptedException {
-        TikTokLive.newClient("avelineyuri")
-                .onConnected((liveClient, event) ->
-                {
-                    System.out.println("Connected to live ");
+    public void startReader() {
+        TikTokLive.newClient(username)
+                .onConnected((liveClient, event) -> System.out.println("Connected to live"))
+                .onError((liveClient, event) -> System.out.println("Error! " + event.getException().getMessage()))
+                .onDisconnected((liveClient, event) -> System.out.println("Disconnected: " + event.getReason()))
+                .onComment((liveClient, event) -> {
+                    System.out.println(event.getText());
+                    processor.onMessage(event.getText());
                 })
-                .onError((liveClient, event) ->
-                {
-                    System.out.println("Error! " + event.getException().getMessage());
-                })
-                .onDisconnected((liveClient, event) ->
-                {
-                    System.out.println("Disconnected: " + event.getReason());
-                })
-                .onComment(((liveClient, tikTokCommentEvent) ->
-                        {
-                            System.out.println(tikTokCommentEvent.getText());
-                            messageList.add(tikTokCommentEvent.getText());
-                            if(messageList.size() > 0){chessbot.receiveMoves(messageList);}
-                        }
-                        ))
-                .configure((settings) -> {
+                .configure(settings -> {
                     settings.setUseEulerstreamWebsocket(true);
                     settings.setUseEulerstreamEnterprise(false);
                     settings.setApiKey(System.getenv("EULER_STREAM_KEY"));

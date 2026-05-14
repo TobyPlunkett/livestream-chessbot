@@ -3,9 +3,6 @@ package bot;
 import chariot.ClientAuth;
 import chariot.model.*;
 import chariot.chess.*;
-import reader.TiktokReader;
-
-import java.net.URI;
 import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.*;
@@ -19,28 +16,6 @@ public record Bot(ClientAndAccount clientAndAccount, Map<String,String> games, R
     static final Logger LOGGER = Logger.getLogger("bot");
     static final String TARGET_USER = "vox567";
 
-    public void receiveMoves(List<String> moves){
-        System.out.println("move numbers" + moves.size());
-    }
-
-    static void main() throws InterruptedException {
-
-        while (true) {
-            try {
-                if (ClientAndAccount.initialize().map(Bot::new) instanceof Some(var bot)) {
-                    TiktokReader tiktokReader = new TiktokReader(bot);
-                    tiktokReader.startReader();
-                    bot.run();
-                }
-            } catch (Exception e) {
-                LOGGER.log(Level.WARNING, e, e::getMessage);
-            } finally {
-                var duration = Duration.ofSeconds(60);
-                LOGGER.info(() -> "Retrying in %d seconds...".formatted(duration.toSeconds()));
-                sleep(duration);
-            }
-        }
-    }
 
     Bot(ClientAndAccount clientAndProfile) {
         Map<String, BoardProvider> boardProviders = BoardProvider.providers().entrySet()
@@ -50,31 +25,25 @@ public record Bot(ClientAndAccount clientAndAccount, Map<String,String> games, R
         this(clientAndProfile, new ConcurrentHashMap<>(), Rules.defaultRules(boardProviders), boardProviders);
     }
 
-    void run() {
-        // Connect the BOT to Lichess
+    void run(MessageProcessor processor) {
         Many<Event> events = clientAndAccount.client().bot().connect();
 
-        // Check for network problems
         if (events instanceof Fail<?>) {
             LOGGER.warning(() -> "Failed to connect: %s".formatted(events));
             return;
         }
 
-
         sendChallenge(TARGET_USER, clientAndAccount.client());
 
-
-        // Check if we should ask to be paired for a game in arena
         if (System.getenv("ARENA_ID") instanceof String arenaId) {
             joinArena(arenaId, clientAndAccount.client());
         }
 
-        // Listen for game start events and incoming challenges
         try (var scope = StructuredTaskScope.open();
              var stream = events.stream();) {
             stream.forEach(event -> { switch(event) {
                 case Event.ChallengeCreatedEvent created -> scope.fork(() -> handleChallenge(created));
-                case Event.GameStartEvent(var game, _)   -> scope.fork(() -> handleGame(game));
+                case Event.GameStartEvent(var game, _)   -> scope.fork(() -> handleGame(game, processor));
                 case Event.GameStopEvent _,
                      Event.GameStartEvent _,
                      Event.ChallengeCanceledEvent _,
@@ -131,7 +100,7 @@ public record Bot(ClientAndAccount clientAndAccount, Map<String,String> games, R
         clientAndAccount.client().bot().chat(event.id(), greeting);
     }
 
-    void handleGame(GameInfo game) {
+    void handleGame(GameInfo game, MessageProcessor processor) {
         var client = clientAndAccount.client();
         var account = clientAndAccount.account();
         var provider = providers.get(game.variant().key());
@@ -155,17 +124,13 @@ public record Bot(ClientAndAccount clientAndAccount, Map<String,String> games, R
                         ? board.sideToMove() == Side.black
                         : board.sideToMove() == Side.white) return;
 
-                Collection<String> validMoves = board.validMoves();
-                Ack result = validMoves.stream()
-                    .skip(new Random().nextInt(validMoves.size()))
-                    .findFirst()
-                    .map(move -> client.bot().move(game.gameId(), move))
-                    .orElse(Ack.fail("no move"));
-
-                if (result instanceof Fail<?> fail) {
-                    LOGGER.warning(() -> "Play failed: %s - resigning".formatted(fail));
-                    client.bot().resign(game.gameId());
-                }
+                processor.openVotingWindow(board.validMoves(), move -> {
+                    Ack result = client.bot().move(game.gameId(), move);
+                    if (result instanceof Fail<?> fail) {
+                        LOGGER.warning(() -> "Play failed: %s - resigning".formatted(fail));
+                        client.bot().resign(game.gameId());
+                    }
+                });
             };
 
             LOGGER.fine(() -> "Connecting to game: %s".formatted(game));
