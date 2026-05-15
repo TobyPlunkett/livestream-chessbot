@@ -142,7 +142,14 @@ public record Bot(ClientAndAccount clientAndAccount, Map<String,String> games, R
                     ? board.sideToMove() == Side.black
                     : board.sideToMove() == Side.white) return;
 
-            processor.openVotingWindow(board.validMoves(), move -> {
+            Collection<String> validMoves = board.validMoves();
+            Map<String, String> sanToUci = validMoves.stream()
+                .collect(Collectors.toMap(
+                    uci -> board.toSAN(uci).toLowerCase().replaceAll("[+#]", ""),
+                    uci -> uci,
+                    (a, _) -> a));
+
+            processor.openVotingWindow(validMoves, sanToUci, move -> {
                 Ack result = client.bot().move(game.gameId(), move);
                 if (result instanceof Fail<?> fail) {
                     LOGGER.warning(() -> "Play failed: %s - resigning".formatted(fail));

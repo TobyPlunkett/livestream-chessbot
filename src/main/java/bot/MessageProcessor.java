@@ -17,30 +17,31 @@ public class MessageProcessor {
     private final AtomicBoolean votingOpen = new AtomicBoolean(false);
     private final ConcurrentHashMap<String, Integer> votes = new ConcurrentHashMap<>();
     private volatile Set<String> currentValidMoves = Set.of();
+    private volatile Map<String, String> currentSanToUci = Map.of();
 
     public MessageProcessor(Duration votingDuration) {
         this.votingDuration = votingDuration;
     }
 
     public void onMessage(TikTokCommentEvent commentEvent) {
-        String text = commentEvent.getText();
-        String user = commentEvent.getUser().getProfileName();
+        String normalised = commentEvent.getText().trim().toLowerCase().replaceAll("[+#]", "");
 
-//        System.out.println(text);
-//        if (!votingOpen.get()) return;
-        String move = text.trim().toLowerCase();
+        String uciMove = currentValidMoves.contains(normalised)
+            ? normalised
+            : currentSanToUci.get(normalised);
 
-        if (currentValidMoves.contains(move)) {
-            votes.merge(move, 1, Integer::sum);
-            LOGGER.info(() -> "Vote: %s (total: %d)".formatted(move, votes.get(move)));
+        if (uciMove != null) {
+            votes.merge(uciMove, 1, Integer::sum);
+            LOGGER.info(() -> "Vote: %s (total: %d)".formatted(uciMove, votes.get(uciMove)));
         }
     }
 
-    void openVotingWindow(Collection<String> validMoves, Consumer<String> onMoveChosen) {
+    void openVotingWindow(Collection<String> validMoves, Map<String, String> sanToUci, Consumer<String> onMoveChosen) {
         votes.clear();
         currentValidMoves = validMoves.stream()
             .map(String::toLowerCase)
             .collect(Collectors.toUnmodifiableSet());
+        currentSanToUci = Map.copyOf(sanToUci);
         votingOpen.set(true);
         LOGGER.info(() -> "Voting window open for %ds — %d valid moves".formatted(
             votingDuration.toSeconds(), currentValidMoves.size()));
