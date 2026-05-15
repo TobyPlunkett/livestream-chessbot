@@ -16,6 +16,7 @@ public class MessageProcessor {
     private final Duration votingDuration;
     private final AtomicBoolean votingOpen = new AtomicBoolean(false);
     private final ConcurrentHashMap<String, Integer> votes = new ConcurrentHashMap<>();
+    private final Set<Long> voters = ConcurrentHashMap.newKeySet();
     private volatile Set<String> currentValidMoves = Set.of();
     private volatile Map<String, String> currentSanToUci = Map.of();
 
@@ -30,7 +31,7 @@ public class MessageProcessor {
             ? normalised
             : currentSanToUci.get(normalised);
 
-        if (uciMove != null) {
+        if (uciMove != null && voters.add(commentEvent.getUser().getId())) {
             votes.merge(uciMove, 1, Integer::sum);
             LOGGER.info(() -> "Vote: %s (total: %d)".formatted(uciMove, votes.get(uciMove)));
         }
@@ -38,6 +39,7 @@ public class MessageProcessor {
 
     void openVotingWindow(Collection<String> validMoves, Map<String, String> sanToUci, Consumer<String> onMoveChosen) {
         votes.clear();
+        voters.clear();
         currentValidMoves = validMoves.stream()
             .map(String::toLowerCase)
             .collect(Collectors.toUnmodifiableSet());
