@@ -53,7 +53,8 @@ public record Bot(ClientAndAccount clientAndAccount, Map<String,String> games, R
     }
 
     static void sendChallenge(String user, ClientAuth client) {
-        client.challenges().challenge(user, p -> p.clockBlitz5m0s().rated(false));
+        client.challenges().challenge(user, p -> p.daysPerTurn(1).rated(false));
+
     }
 
     static void joinArena(String arenaId, ClientAuth client) {
